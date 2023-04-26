@@ -1,0 +1,78 @@
+
+*** ChampSim Multicore Out-of-Order Simulator ***
+
+Warmup Instructions: 30000000
+Simulation Instructions: 30000000
+Number of CPUs: 1
+LLC sets: 2048
+LLC ways: 16
+Off-chip DRAM Size: 4096 MB Channels: 1 Width: 64-bit Data Rate: 3200 MT/s
+
+CPU 0 runs ../traces//trace_2.xz
+CPU 0 L-TAGE branch predictorss
+Heartbeat CPU 0 instructions: 10000000 cycles: 3394402 heartbeat IPC: 2.94603 cumulative IPC: 2.94603 (Simulation time: 0 hr 0 min 47 sec) 
+Heartbeat CPU 0 instructions: 20000000 cycles: 6819355 heartbeat IPC: 2.91975 cumulative IPC: 2.93283 (Simulation time: 0 hr 1 min 33 sec) 
+Heartbeat CPU 0 instructions: 30000003 cycles: 10207124 heartbeat IPC: 2.9518 cumulative IPC: 2.93912 (Simulation time: 0 hr 2 min 18 sec) 
+
+Warmup complete CPU 0 instructions: 30000003 cycles: 10207124 (Simulation time: 0 hr 2 min 18 sec) 
+
+Heartbeat CPU 0 instructions: 40000002 cycles: 24330309 heartbeat IPC: 0.708055 cumulative IPC: 0.708055 (Simulation time: 0 hr 3 min 0 sec) 
+Heartbeat CPU 0 instructions: 50000003 cycles: 41328127 heartbeat IPC: 0.588311 cumulative IPC: 0.642653 (Simulation time: 0 hr 3 min 43 sec) 
+Heartbeat CPU 0 instructions: 60000003 cycles: 57599612 heartbeat IPC: 0.614572 cumulative IPC: 0.633012 (Simulation time: 0 hr 4 min 27 sec) 
+Finished CPU 0 instructions: 30000000 cycles: 47392488 cumulative IPC: 0.633012 (Simulation time: 0 hr 4 min 27 sec) 
+
+ChampSim completed all CPUs
+
+Region of Interest Statistics
+
+CPU 0 cumulative IPC: 0.633012 instructions: 30000000 cycles: 47392488
+L1D TOTAL     ACCESS:    7819259  HIT:    6887803  MISS:     931456
+L1D LOAD      ACCESS:    5170197  HIT:    4393752  MISS:     776445
+L1D RFO       ACCESS:    2649062  HIT:    2494051  MISS:     155011
+L1D PREFETCH  ACCESS:          0  HIT:          0  MISS:          0
+L1D WRITEBACK ACCESS:          0  HIT:          0  MISS:          0
+L1D PREFETCH  REQUESTED:          0  ISSUED:          0  USEFUL:          0  USELESS:          0
+L1D AVERAGE MISS LATENCY: 51.6174 cycles
+L1I TOTAL     ACCESS:    5213748  HIT:    5212796  MISS:        952
+L1I LOAD      ACCESS:    5213748  HIT:    5212796  MISS:        952
+L1I RFO       ACCESS:          0  HIT:          0  MISS:          0
+L1I PREFETCH  ACCESS:          0  HIT:          0  MISS:          0
+L1I WRITEBACK ACCESS:          0  HIT:          0  MISS:          0
+L1I PREFETCH  REQUESTED:          0  ISSUED:          0  USEFUL:          0  USELESS:          0
+L1I AVERAGE MISS LATENCY: 91.9569 cycles
+L2C TOTAL     ACCESS:    1418379  HIT:     939626  MISS:     478753
+L2C LOAD      ACCESS:     777356  HIT:     345567  MISS:     431789
+L2C RFO       ACCESS:     154955  HIT:     108338  MISS:      46617
+L2C PREFETCH  ACCESS:          0  HIT:          0  MISS:          0
+L2C WRITEBACK ACCESS:     486068  HIT:     485721  MISS:        347
+L2C PREFETCH  REQUESTED:          0  ISSUED:          0  USEFUL:          0  USELESS:          0
+L2C AVERAGE MISS LATENCY: 69.7805 cycles
+LLC TOTAL     ACCESS:     780369  HIT:     671321  MISS:     109048
+LLC LOAD      ACCESS:     431788  HIT:     331808  MISS:      99980
+LLC RFO       ACCESS:      46615  HIT:      38429  MISS:       8186
+LLC PREFETCH  ACCESS:          0  HIT:          0  MISS:          0
+LLC WRITEBACK ACCESS:     301966  HIT:     301084  MISS:        882
+LLC PREFETCH  REQUESTED:          0  ISSUED:          0  USEFUL:          0  USELESS:          0
+LLC AVERAGE MISS LATENCY: 171.098 cycles
+Major fault: 0 Minor fault: 2176
+
+DRAM Statistics
+ CHANNEL 0
+ RQ ROW_BUFFER_HIT:       2097  ROW_BUFFER_MISS:     106063
+ DBUS_CONGESTED:      29265
+ WQ ROW_BUFFER_HIT:      20804  ROW_BUFFER_MISS:      63111  FULL:          0
+
+ AVG_CONGESTED_CYCLE: 6
+
+CPU 0 Branch Prediction Accuracy: 93.3783% MPKI: 9.7739 Average ROB Occupancy at Mispredict: 61.0928
+
+Branch types
+NOT_BRANCH: 25571636 85.2388%
+BRANCH_DIRECT_JUMP: 312551 1.04184%
+BRANCH_INDIRECT: 0 0%
+BRANCH_CONDITIONAL: 4076729 13.5891%
+BRANCH_DIRECT_CALL: 19428 0.06476%
+BRANCH_INDIRECT_CALL: 0 0%
+BRANCH_RETURN: 19428 0.06476%
+BRANCH_OTHER: 0 0%
+
