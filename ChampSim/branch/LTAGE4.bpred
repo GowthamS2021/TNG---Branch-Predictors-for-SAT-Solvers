@@ -8,7 +8,7 @@
 #define MAX_COUNTER 7
 #define INDEX_OF_TABLE 10
 #define TAG_LENGTH 8
-#define NO_OF_TABLES 12
+#define NO_OF_TABLES 4
 #define TAGE_RESET_USEFUL_INTERVAL 512000
 #define GLOBAL_HISTORY_SIZE 1024
 #define PATH_HISTORY_SIZE 32
@@ -26,9 +26,9 @@
 #define ITERATION_LENGTH 14
 #define LOOP_AGE 31
 
-const int TAGE_TAG_WIDTHS[NO_OF_TABLES] = {7, 7, 8, 8, 9, 10, 11, 12, 12, 13, 14, 15};
-const int TAGE_HISTORY_LENGTHS[NO_OF_TABLES] = {4, 6, 10, 16, 25, 40, 64, 101, 160, 254, 403, 640};
-const int TAGE_INDEX_SIZE[NO_OF_TABLES] = {10, 10, 11, 11, 11, 11, 10, 10, 10, 10, 9, 9};
+const int TAGE_TAG_WIDTHS[NO_OF_TABLES] = { 12, 13, 14, 15};
+const int TAGE_HISTORY_LENGTHS[NO_OF_TABLES] = {160, 254, 403, 640};
+const int TAGE_INDEX_SIZE[NO_OF_TABLES] = {10, 10, 9, 9};
 
 bool GHRA[GLOBAL_HISTORY_SIZE];
 uint8_t PHRA[PATH_HISTORY_SIZE];
@@ -498,8 +498,9 @@ void O3_CPU::initialize_branch_predictor()
 
 uint8_t O3_CPU::predict_branch(uint64_t ip)
 {
-    loop_prediction = loop_predictor.predict(ip);
     tage_prediction = predictor.predict(ip);
+    loop_prediction = loop_predictor.predict(ip);
+
     if ((loop_prediction >= 2) && (Loop_Correct >= 0))
     {
         // cout << " loop Prediction is sent back" << endl;
