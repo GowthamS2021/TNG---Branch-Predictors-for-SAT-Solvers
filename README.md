@@ -1,7 +1,7 @@
 # TNG Branch Predictors for SAT Solvers
 Team TNG's repository for SAT Solvers
 
-The folder champsim has the champsim appilications with all the changes that we have done in the project.
+The folder champsim has the champsim applications with all the changes that we have done in the project.
 
 # Code
 The code for the LTAGE branch predictor is in LTAGE.bpred in the branch subfolder of champsim. 
