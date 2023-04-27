@@ -1,0 +1,525 @@
+#include "ooo_cpu.h"
+#include <cmath>
+#include <vector>
+
+#define BIMODAL_TABLE_SIZE 16384
+#define BIMODAL_LOGSIZE 14
+#define BIMODAL_PRIME 16381
+#define MAX_COUNTER 7
+#define INDEX_OF_TABLE 10
+#define TAG_LENGTH 8
+#define NO_OF_TABLES 12
+#define TAGE_RESET_USEFUL_INTERVAL 512000
+#define GLOBAL_HISTORY_SIZE 3000
+#define PATH_HISTORY_SIZE 32
+#define MIN_VALUE 0
+#define INTIAL_STATE 4
+#define TAG_COUNTER_BITS 3
+#define BIMODAL_BITS 2
+#define USEFUL_BITS_IN_TABLE 2
+#define USE_ALT_ON_NA_BITS 4
+#define LOOP_ENTRIES 256
+#define LOOP_ASSOCIATIVITY 4
+#define LOOP_LOGINDEX 6
+#define LOOP_LOGWAY 2
+#define TAGSIZE 14
+#define ITERATION_LENGTH 14
+#define LOOP_AGE 31
+
+const int TAGE_TAG_WIDTHS[NO_OF_TABLES] = {7, 7, 8, 8, 9, 10, 11, 12, 12, 13, 14, 15};
+const int TAGE_HISTORY_LENGTHS[NO_OF_TABLES] = {4, 7, 13, 23, 41, 74, 133, 239, 430, 774, 1393, 2507};
+const int TAGE_INDEX_SIZE[NO_OF_TABLES] = {10, 10, 11, 11, 11, 11, 10, 10, 10, 10, 9, 9};
+
+bool GHRA[GLOBAL_HISTORY_SIZE];
+uint8_t PHRA[PATH_HISTORY_SIZE];
+
+class ENTRY
+{
+public:
+    int u;   // 2 bit u value
+    int ctr; // 3 bit ctr value
+    int tag; // 8 bit tag
+
+    ENTRY()
+    {
+        u = 0;
+        ctr = INTIAL_STATE;
+        tag = 0;
+    }
+};
+
+// TODO : have to intialise properly with the index and history length
+class TAGE_TABLE
+{
+    int NoOfElements;
+    int INDEX;
+    int history;
+
+public:
+    ENTRY *TAGE_ENTRIES;
+    TAGE_TABLE() { ; }
+    TAGE_TABLE(int n, int INDEX)
+    {
+        NoOfElements = round(pow(2, n));
+        this->INDEX = INDEX;
+        TAGE_ENTRIES = new ENTRY[NoOfElements];
+        history = TAGE_HISTORY_LENGTHS[INDEX];
+    }
+
+    void set(int n, int INDEX)
+    {
+        NoOfElements = round(pow(2, n));
+        this->INDEX = INDEX;
+        TAGE_ENTRIES = new ENTRY[NoOfElements];
+        history = TAGE_HISTORY_LENGTHS[INDEX];
+    }
+
+    uint64_t XORED_Path_history()
+    {
+        int length = (history > 16) ? 16 : history;
+        uint64_t path_history = 0;
+        for (int i = PATH_HISTORY_SIZE - 1; i >= 0; i--)
+        {
+            path_history = (path_history << 1) | PHRA[i];
+        }
+        path_history &= ((1 << length) - 1);
+        uint64_t path_1 = path_history & ((1 << TAGE_INDEX_SIZE[INDEX]) - 1), path_2 = path_history >> TAGE_INDEX_SIZE[INDEX];
+        path_2 = ((path_2 << history) & ((1 << TAGE_INDEX_SIZE[INDEX]) - 1)) + (path_2 >> abs(TAGE_INDEX_SIZE[INDEX] - history));
+        uint64_t path = path_1 ^ path_2;
+        return ((path << history) & ((1 << TAGE_INDEX_SIZE[INDEX]) - 1)) + (path >> abs(TAGE_INDEX_SIZE[INDEX] - history));
+    }
+
+    uint64_t XORED_Global_history(int size)
+    {
+        uint64_t xored_history = 0, temp = 0;
+        for (int i = 0; i < TAGE_HISTORY_LENGTHS[INDEX]; i++)
+        {
+            temp = (temp << 1) | GHRA[i];
+            if (!((i + 1) % size) || i == TAGE_HISTORY_LENGTHS[INDEX] - 1)
+            {
+                xored_history ^= temp;
+                temp = 0;
+            }
+        }
+        return xored_history;
+    }
+
+    uint64_t getIndex(uint64_t pc)
+    {
+        uint64_t global = XORED_Global_history(TAGE_INDEX_SIZE[INDEX]);
+        uint64_t path = XORED_Path_history();
+        return (global ^ pc ^ (pc >> (abs(TAGE_INDEX_SIZE[INDEX] - history) + 1)) ^ path) & ((1 << TAGE_INDEX_SIZE[INDEX]) - 1);
+    }
+
+    uint64_t getTag(uint64_t pc)
+    {
+        uint64_t global = XORED_Global_history(TAGE_TAG_WIDTHS[INDEX]) ^ XORED_Global_history(TAGE_TAG_WIDTHS[INDEX] - 1);
+        return (global ^ pc) & ((1 << TAGE_TAG_WIDTHS[INDEX]) - 1);
+    }
+};
+
+class TAGE
+{
+private:
+    int USE_ALT_ON_NA; // 4 bit counter
+    int tage_bimodal[BIMODAL_TABLE_SIZE];
+    TAGE_TABLE *tables = new TAGE_TABLE[NO_OF_TABLES];
+    bool nor_pred, alter_pred;
+    int nor_pred_comp, alter_pred_comp;
+    bool tage_pred;
+    int branches;
+    bool is_weak;
+
+public:
+    void initialize()
+    {
+        for (int i = 0; i < NO_OF_TABLES; i++)
+        {
+            tables[i].set(TAGE_INDEX_SIZE[i], i);
+        }
+        for (int i = 0; i < BIMODAL_TABLE_SIZE; i++)
+        {
+            tage_bimodal[i] = 1 << (BIMODAL_BITS - 1);
+        }
+        branches = 0;
+        nor_pred = false;
+        alter_pred = false;
+        nor_pred_comp = 0;
+        alter_pred_comp = 0;
+        tage_pred = false;
+        USE_ALT_ON_NA = 8;
+        is_weak = true;
+    }
+
+    // bool predict(uint64_t pc);
+    int bimodal_index(uint64_t pc)
+    {
+        // TODO
+        return (pc ^ (pc >> BIMODAL_LOGSIZE)) & ((1 << BIMODAL_LOGSIZE) - 1);
+        // return (pc & ((1 << BIMODAL_LOGSIZE) - 1))
+    }
+
+    void update_count(int *ctr, bool taken, int MAX)
+    {
+        if (taken && *ctr < MAX)
+        {
+            (*ctr)++;
+        }
+        else if (!taken && *ctr > 0)
+        {
+            (*ctr)--;
+        }
+    }
+
+    bool match_at_comp_n(uint64_t pc, int comp)
+    {
+        int index = tables[comp - 1].getIndex(pc);
+        int tag = tables[comp - 1].getTag(pc);
+        return tables[comp - 1].TAGE_ENTRIES[index].tag == tag;
+    }
+
+    bool return_prediction(uint64_t pc, int component)
+    {
+        if (component == 0)
+        {
+            int ind = bimodal_index(pc);
+            return tage_bimodal[ind] >= (1 << (BIMODAL_BITS - 1));
+        }
+        else
+        {
+            int ind = tables[component - 1].getIndex(pc);
+            return tables[component - 1].TAGE_ENTRIES[ind].ctr >= (1 << (TAG_COUNTER_BITS - 1));
+        }
+    }
+
+    bool predict(uint64_t pc)
+    {
+
+        nor_pred_comp = 0;
+        alter_pred_comp = 0;
+
+        for (int count = NO_OF_TABLES; count > 0; count--)
+        {
+            if (match_at_comp_n(pc, count))
+            {
+                nor_pred_comp = count;
+                break;
+            }
+        }
+        for (int count = nor_pred_comp - 1; count > 0; count--)
+        {
+            if (match_at_comp_n(pc, count))
+            {
+                alter_pred_comp = count;
+                break;
+            }
+        }
+
+        nor_pred = return_prediction(pc, nor_pred_comp);
+        alter_pred = return_prediction(pc, alter_pred_comp);
+
+        if (nor_pred_comp == 0)
+        {
+            tage_pred = nor_pred;
+        }
+        else
+        {
+            int ind = tables[nor_pred_comp - 1].getIndex(pc);
+            is_weak = 1 >= abs(2 * tables[nor_pred_comp - 1].TAGE_ENTRIES[ind].ctr + 1 - (1 << TAG_COUNTER_BITS));
+
+            if (USE_ALT_ON_NA < 8 || !is_weak)
+                tage_pred = nor_pred;
+            else
+                tage_pred = alter_pred;
+        }
+
+        return tage_pred;
+    }
+
+    void update_Tage(uint64_t pc, bool taken)
+    {
+        bool checker = (nor_pred == alter_pred);
+        if (nor_pred_comp > 0)
+        {
+            ENTRY *pred1 = &tables[nor_pred_comp - 1].TAGE_ENTRIES[tables[nor_pred_comp - 1].getIndex(pc)];
+            int useful_bit = pred1->u;
+            if (is_weak)
+            {
+                if (!checker)
+                {
+                    bool foo = nor_pred != taken;
+                    update_count(&USE_ALT_ON_NA, foo, ((1 << USE_ALT_ON_NA_BITS) - 1));
+                }
+            }
+            if (alter_pred_comp > 0)
+            {
+                ENTRY *pred2 = &tables[alter_pred_comp - 1].TAGE_ENTRIES[tables[alter_pred_comp - 1].getIndex(pc)];
+                if (useful_bit == 0)
+                {
+                    update_count(&pred2->ctr, taken, (1 << TAG_COUNTER_BITS) - 1);
+                }
+            }
+            else
+            {
+                if (useful_bit == 0)
+                {
+                    update_count(&tage_bimodal[bimodal_index(pc)], taken, (1 << BIMODAL_BITS) - 1);
+                }
+            }
+            if (!checker)
+            {
+                if (nor_pred == taken)
+                {
+                    update_count(&pred1->u, nor_pred == taken, (1 << USEFUL_BITS_IN_TABLE) - 1);
+                }
+                else
+                {
+                    if (USE_ALT_ON_NA < 8)
+                    {
+                        update_count(&pred1->u, nor_pred == taken, (1 << USEFUL_BITS_IN_TABLE) - 1);
+                    }
+                }
+            }
+            update_count(&pred1->ctr, taken, (1 << TAG_COUNTER_BITS) - 1);
+        }
+        else
+        {
+            update_count(&tage_bimodal[bimodal_index(pc)], taken, (1 << BIMODAL_BITS) - 1);
+        }
+        if (tage_pred != taken)
+        {
+            bool var_1 = false, var_2 = false;
+            vector<int> store;
+            int store_1 = -1, store_2 = -1;
+            for (int i = nor_pred_comp + 1; i <= NO_OF_TABLES; i++)
+            {
+                ENTRY *t = &tables[i - 1].TAGE_ENTRIES[tables[i - 1].getIndex(pc)];
+                if (t->u == 0)
+                {
+                    store.push_back(i);
+                }
+            }
+            if (store.size() == 0)
+            {
+                for (int i = nor_pred_comp + 1; i <= NO_OF_TABLES; i++)
+                {
+                    ENTRY *t = &tables[i - 1].TAGE_ENTRIES[tables[i - 1].getIndex(pc)];
+                    update_count(&t->u, tage_pred == taken, (1 << USEFUL_BITS_IN_TABLE) - 1);
+                }
+            }
+            else
+            {
+                int rand = random();
+                int y = rand % ((int)round(pow(2, store.size())) - 1) + 1;
+                for (int i = 0; i < store.size(); i++)
+                {
+                    if ((y >= pow(2, store.size() - i - 1)) && (y <= pow(2, store.size() - i) - 1))
+                    {
+                        ENTRY *t = &tables[store[i] - 1].TAGE_ENTRIES[tables[store[i] - 1].getIndex(pc)];
+                        t->tag = tables[store[i] - 1].getTag(pc);
+                        t->ctr = (1 << (TAG_COUNTER_BITS - 1));
+                        break;
+                    }
+                }
+            }
+        }
+
+        // global history update and path history update
+
+        for (int i = GLOBAL_HISTORY_SIZE - 1; i >= 1; i--)
+            GHRA[i] = GHRA[i - 1];
+        GHRA[0] = taken;
+        for (int i = PATH_HISTORY_SIZE - 1; i >= 1; i--)
+            PHRA[i] = PHRA[i - 1];
+        PHRA[0] = pc & 1;
+        branches++;
+        if ((branches % TAGE_RESET_USEFUL_INTERVAL) == 0)
+        {
+            branches = 0;
+            for (int i = 0; i < NO_OF_TABLES; i++)
+            {
+                for (int j = 0; j < (1 << TAGE_INDEX_SIZE[i]); j++)
+                {
+                    tables[i].TAGE_ENTRIES[j].u >>= 1;
+                }
+            }
+        }
+    }
+};
+
+class LOOP_ENTRY
+{
+public:
+    uint64_t tag;
+    uint64_t PastIter;
+    uint64_t CurrentIter;
+    uint64_t age;
+    uint64_t confidence;
+
+    LOOP_ENTRY()
+    {
+        tag = 0;
+        PastIter = 0;
+        CurrentIter = 0;
+        age = 0;
+        confidence = 0;
+    }
+};
+
+class LOOP_PREDICTOR
+{
+    LOOP_ENTRY table[LOOP_ENTRIES];
+    // variables that are used across both predict and update
+    int Hit, Predict_confidence;
+    uint64_t Index, PrevTag;
+
+public:
+    bool predict(uint64_t pc)
+    {
+        // cout << "Loop Predictor Predict function call" << endl;
+        Hit = -1;
+        int Prediction;
+        Index = (pc & ((1 << LOOP_LOGINDEX) - 1)) << LOOP_LOGWAY;
+        PrevTag = (pc >> LOOP_LOGINDEX) & ((1 << TAGSIZE) - 1);
+        for (uint64_t i = Index; i < Index + LOOP_ASSOCIATIVITY; i++)
+        {
+            if (table[i].tag == PrevTag)
+            {
+                Hit = i;
+                if (table[i].CurrentIter + 1 == table[i].PastIter)
+                    Prediction = 0;
+                else
+                    Prediction = 1;
+                break;
+            }
+        }
+        if (Hit == -1)
+        {
+            Predict_confidence = 0;
+        }
+        else
+            Predict_confidence = (Prediction & 1) + ((table[Hit].confidence == 3) << 1);
+        return Predict_confidence;
+    }
+
+    void update(uint64_t pc, uint64_t taken, uint64_t TAGE_Prediction)
+    {
+        // cout << "Loop Predictor Update function call" << endl;
+        uint64_t Prediction = Predict_confidence & 1;
+        bool confidence_level = (Predict_confidence >> 1);
+        if (Hit >= 0)
+        {
+            if (confidence_level)
+            {
+                if (taken != Prediction)
+                {
+                    table[Hit].PastIter = 0;
+                    table[Hit].CurrentIter = 0;
+                    table[Hit].confidence = 0;
+                    table[Hit].age = 0;
+                    return;
+                }
+                if (taken != TAGE_Prediction)
+                {
+                    if (table[Hit].age < LOOP_AGE)
+                        table[Hit].age++;
+                }
+            }
+            table[Hit].CurrentIter = (table[Hit].CurrentIter + 1) & ((1 << ITERATION_LENGTH) - 1);
+            if (table[Hit].CurrentIter > table[Hit].PastIter)
+            {
+                table[Hit].confidence = 0;
+                if (table[Hit].PastIter != 0)
+                    table[Hit].age = 0;
+                table[Hit].PastIter = 0;
+            }
+            if (!taken)
+            {
+                if (table[Hit].CurrentIter == table[Hit].PastIter)
+                {
+                    (table[Hit].confidence + 1 > 3) ? table[Hit].confidence = 3 : table[Hit].confidence += 1;
+                    if ((table[Hit].CurrentIter > 0) && (table[Hit].CurrentIter < 3))
+                    {
+                        table[Hit].PastIter = 0;
+                        table[Hit].age = 0;
+                        table[Hit].confidence = 0;
+                    }
+                    cout << "confidence: " << table[Hit].confidence << endl;
+                }
+                else
+                {
+                    table[Hit].confidence = 0;
+                    if (table[Hit].PastIter == 0)
+                    {
+                        table[Hit].PastIter = table[Hit].CurrentIter;
+                    }
+                    else
+                    {
+                        table[Hit].PastIter = 0;
+                        table[Hit].age = 0;
+                    }
+                }
+            }
+        }
+        else
+        {
+            if (taken)
+            {
+                for (int i = Index; i < Index + LOOP_ASSOCIATIVITY; i++)
+                {
+                    if (table[i].age == 0)
+                    {
+                        table[i].age = LOOP_AGE;
+                        table[i].tag = PrevTag;
+                        table[i].confidence = 0;
+                        table[i].PastIter = 0;
+                        table[i].CurrentIter = 1;
+                        break;
+                    }
+                    else if (table[i].age > 0)
+                        table[i].age--;
+                }
+            }
+        }
+    }
+};
+
+TAGE predictor;
+LOOP_PREDICTOR loop_predictor;
+// LoopPred loop_predictor;
+uint64_t tage_prediction, loop_prediction;
+int Loop_Correct = 0;
+
+void O3_CPU::initialize_branch_predictor()
+{
+    cout << "CPU " << cpu << " L-TAGE branch predictorss" << endl;
+    predictor.initialize();
+}
+
+uint8_t O3_CPU::predict_branch(uint64_t ip)
+{
+    loop_prediction = loop_predictor.predict(ip);
+    tage_prediction = predictor.predict(ip);
+    if ((loop_prediction >= 2) && (Loop_Correct >= 0))
+    {
+        // cout << " loop Prediction is sent back" << endl;
+        return (loop_prediction & 1);
+    }
+    else
+        return tage_prediction;
+}
+
+void O3_CPU::last_branch_result(uint64_t ip, uint8_t taken)
+{
+
+    predictor.update_Tage(ip, taken);
+    loop_predictor.update(ip, taken, tage_prediction);
+
+    if (loop_prediction >= 2 && tage_prediction != loop_prediction)
+    {
+        if (taken == loop_prediction)
+            Loop_Correct = min(Loop_Correct + 1, 127);
+        else
+            Loop_Correct = max(Loop_Correct - 1, -126);
+    }
+}
